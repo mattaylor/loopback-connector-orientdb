@@ -1,0 +1,191 @@
+Promise = require 'bluebird'
+http    = require 'http'
+Oriento = require 'oriento'
+_ = require 'lodash'
+
+module.exports =
+	initialize :  (source, call) ->  
+		if source.settings.useBinary then dbCon = new OBin source.settings   
+		else dbCon = new OWeb source.settings
+		source.connector = dbCon
+		source.connector.dataSource = source
+		call && call()
+	oweb 	: (opts) -> new OWeb opts
+	obin 	: (opts) -> new OBin opts
+
+class OWeb
+
+	opts 	: logLevel:2, port:2480, method:'get', name:'test', host:'localhost', headers:
+		'content-type':'application/json', Accept: 'application/json'
+	type  : 'OWEB'
+
+	constructor : (opts) ->
+		opts.database && opts.name = opts.database
+		opts.username && opts.auth = opts.username+':'+opts.password
+		_.merge @opts, opts
+
+	auth : (creds) ->
+		if creds.type == 'basic' then return @opts.auth = creds.username+':'+creds.password
+		@fetch
+			path:'/token/'+@opts.name
+			body : 'grant_type=password&username='+creds.username+'&password='+creds.password
+			headers:'Content-Type':'application/x-www-form-urlencoded'
+		.then (res) => 
+			@debug 'AUTH:'+creds.username, res
+			@opts.headers.Authorization = 'Bearer '+res.access_token
+			res.access_token
+		.catch (res) => @debug 'AUTH ERR:', res
+
+	fetch : (opts, call) ->
+		opts = _.merge {}, @opts, opts
+		if opts.body 
+			opts.headers['Content-Length'] = opts.body.length
+			opts.method == 'get' && opts.method = 'post' 
+		@debug 'FETCH:',opts, 2  
+		prom = new Promise (resolve, reject) =>
+			req = http.request opts, (res, body='') =>
+				@cook res.headers['set-cookie']
+				res.on 'err',  (error) -> reject error
+				res.on 'data', (chunk) -> body += chunk
+				res.on 'end',  =>	try resolve @resBody(JSON.parse(body)) catch then reject body
+			opts.body && req.write opts.body
+			req.end()
+		call && prom.catch(call).then (res) -> call(null,res)
+		prom
+
+	cook: (cookie) -> 
+		cookie && @opts.auth = null
+		cookie && @opts.headers.Cookie = cookie
+
+	me : (call) -> 
+		@invoke 'me', [], call
+
+	select : (model, filter={}, sql="select ") ->
+		#sql = 'select '+filter.fields?.join() +' from '+model
+		filter.fields && sql += filter.fields.join()
+		model && sql += ' from '+model
+		filter.where && sql += ' where '+filter.where 
+		filter.sort  && sql += ' sort by '+filter.sort
+		filter.group && sql += ' group by '+filter.group
+		filter.limit && sql += ' limit '+filter.limit
+		filter.skip  && sql += ' skip '+filter.skip 
+		filter.plan  && sql += ' fetchPlan '+filter.plan
+		sql
+
+	all : (model, filter={}, call) ->
+		@debug 'All : '+model, filter 
+		@query @select(model, filter), call
+
+	find : (model, id, call, opts) ->
+		@fetch path:'/document/'+@opts.name+'/'+id, call, opts
+
+	query: (sql, call, opts)->
+		@debug 'query: '+sql, opts
+		@fetch path:'/command/'+@opts.name+'/sql/'+@escape(sql), call
+
+	update: (model, id, data, call) ->
+
+	escape: (text) ->
+		encodeURIComponent(text)
+
+	create: (model, data, call, opts) ->
+		@debug 'create: '+model, data
+		@query 'insert into '+model+' content '+JSON.stringify(data), call, method:post
+
+	invoke : (func, args=[], body, call) ->
+		@debug 'invoke: '+func, args
+		@fetch path:'/function/'+@opts.name+'/'+func+'/'+args.join('/'), call
+
+	count: (model, call, where, opts) ->
+		@debug 'count: '+model, where
+		@all model, {fields:['count(*)'], where:where}, call, opts
+
+	debug : (key, val='', level=1) -> 
+		if level <= @opts.logLevel then console.log @type, key, val
+
+	describe : (model) ->
+		@fetch path:'/class/'+@opts.name+'/'+model
+		.then (mod, props={}) ->
+			for p in mod.properties then if p.name.match /^[a-z]/ 
+				p.type = typeMap[p.type] 
+				props[p.name] = p  
+			mod.properties = props
+			mod.properties.id = type:'String', format:'#\\d+:\\d+', description:mod.name+' Record Id'
+			mod
+
+	discover : (opts, call) ->
+
+	save : (model, data, call, opts) ->
+
+	autoupdate : (models, call, opts) ->
+
+	destroy :  (model, id, call, opts) ->
+
+	destroyAll : (model, where, call) ->
+
+	updateOrCreate : @save
+
+	updateAttributes : @update
+
+	discoverModelDefinitions : @discover
+
+	exists: @find
+
+	reqBody : (data) ->
+		data
+
+	resBody : (data) ->
+		data.result || data
+
+	isActual : (models, call) ->
+
+	disconnect : () ->
+
+
+class OBin extends OWeb
+
+	opts 	: username:'admin', password:'admin', useToken:true 
+	type 	: 'OBIN'
+
+	constructor : (opts) ->
+		@server = Oriento _.merge @opts, opts
+		@connect @opts 
+
+	connect : (creds) -> 
+		creds.name ?= @opts.name
+		if (@db && creds.token) then @db.token = creds.token 
+		else @db = @server.use(creds) 
+
+	invoke : (func, args = []) -> 
+		@debug 'INVOKE:'+func, args
+		@db.exec "select expand('+func+') from (select "+func+'('+args.join()+'))'
+	
+	query : (sql, call, opts) -> 
+		@debug 'QUERY:'+sql, opts 
+		prom = @db.query(sql, opts)
+		call && prom.catch(call).then (res) -> call(null,res)
+		prom
+
+operMap =
+	neq:' <> ', like:' like ', nlike:' not like ', ni: 'not in', lte:' <= ', gte:' >= ', lt:' < ', gt:' > '
+
+typeMap = 
+	LINKLIST:'[String]'
+	LINKSET:'[String]'
+	LINKMAP:'Object'
+	DATE:'Date'
+	STRING:'String'
+	DATETIME:'Date'
+	FLOAT:'Number'
+	DOUBLE:'Number'
+	LONG:'Number'
+	INTEGER:'Number'
+	BOOLEAN:'Boolean'
+	LINK:'String'
+	BINARY:'Buffer'
+	EMBEDDED:'Object'
+	EMBEDDEDLIST:'Array'
+	EMBEDDEDSET:'Array'
+	EMBEDDEDMAP:'Object'
+
+mix = (src, def) -> _.merge {}, def, src 

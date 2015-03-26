@@ -1,0 +1,345 @@
+funcs:
+  toMap:
+   _desc		: 	Convert a record to a JSON map object
+   _tags		:  util
+   doc		: 	Document Reference to convert
+  me        :
+   _desc		: 	Return information about the curent user
+   _tags		: util
+   syncData :
+   _desc		: Upload CMD data
+   _tags		: cmd
+   _inp	   : syncRequest
+   _out 		: syncResponse
+  digest:
+    _desc		: Aggregate stats over multiple days
+    _out 		: digestModel
+    _tags   	: data
+    metric		: The metric Id
+    user 		: The user Id
+    period  	: The number of days to aggregate
+    minSteps   : The minimum number of step count records for each day
+  register  	:
+    _tags   	: user
+    _desc		: Register a user or group
+  unregister	:
+    _tags   	: user
+    _desc		: Unregister a user or group
+  deleteUser	:
+    _tags   	: user
+    _desc 		: Delete a user or group
+  bossView		:
+    _tags   	: data
+    _desc   	: Get data for boss triage panel
+  checkPatch	:
+    _tags   	: user
+    _desc   	: Verify availabilitiy of a set of patchIds
+  doseHisto 	:
+    _tags   	: data
+    _desc		: Histogram of dosage adherence
+  encrypt:
+    _tags   	: util
+    _desc		: Encrypt some data
+  decrypt:
+    _tags   	: util
+    _desc		: Decrypt some encrupted data
+  forgotPassword:
+    _tags   	: setup
+    _desc		: Send a password update email to someone
+  generateData:
+    _tags   	: test
+    _desc		: Generate test data
+  getDataGenJobStatus:
+    _tags   	: test
+    _desc		: Get data generation job status
+  getPatients:
+    _tags   	: admin
+    _desc 		: Get a list of patients for one or more groups
+  getRaw:
+    _tags   	: data
+    _desc		: Get raw data for a user
+  grant:
+    _tags   	: user
+    _desc		: Grant someone access to a group
+  revoke:
+    _tags   	: user
+    _desc		: Remove access to a group
+  interupts:
+    _tags   	: data
+    _desc		: Return hours for which less than expected stepcount records were uploaded
+  lastSync:
+    _tags   	: data
+    _desc		: Return last sync times where CMD data was uploaded for members of a group
+  members:
+    _tags   	: util
+    _desc		: Get details of all members of a group
+  updatePassword:
+    _tags   	: user
+    _desc		: Get details of all members of a group
+    _desc		: Update password for a user
+  updateUser:
+    _tags   	: user
+    _desc		: Update details of a user
+  verifyEmail:
+    _tags   	: user
+    _desc		: Verify Email address
+
+models  :
+  digestResponse:
+    _desc		: A digest response object
+  event:
+    _desc		: A timestamped event
+    metric		: The metric meta data describing this event
+    time			: The time the event occured
+    tzone		: The timezone of the user when this event oaccured
+    label		: A description of this event
+    value		: The numeric value of the event
+    patchId		: The patch Id coresponding to this event
+  stats 			:
+    _desc		: Hourly statistical summaries
+  hours:
+    _desc		: Collections for all stats for a given hour
+  dailyStats	:
+    _desc		: Daily stats
+    hours		: links to stats records
+    min			: minimum hourly stats min for the day
+    max			: maxium hourly stats max for the day
+    sum			: sum of the hourly sums for the day
+    count		: sum of the hourly counts for the day
+    avg			: sum / count
+    final		: Do not update dailyStats on each read
+    goal			: link to goal for this metric
+    metric		: link to metric
+  config:
+    _desc		: Application configuration data for a user
+    patches		: The patch records that have been paired for this user
+    lastSync	: The most recent syncLog record for this user
+    lastCmdSync: The most recent syncLog record with CMD Data
+    tags			: List of tags associate with this user
+  contact:
+    _tags		: app
+    _desc		: Contact details for a user
+    firstName	: The users first name
+    lastName	: The users last name
+    email		: The users email address
+    telNo		: The users telephone number
+  adherence:
+    _tags		: cep
+    _desc		: Timing adherence events a record is created for every valid dosage window
+    streak 	  	: The number of consecutive +ve adherence values (-ve if values are 0)
+    value		: The number of pills detected in the dose time window (0 = missed adherence event).
+    ingestion	: A link to the ingestion detected in the dose take windo
+    dose			: A link to the dose schedule for this adherence event
+  dose:
+    _tags		: app
+    _desc		: Dosage schedule
+    _post     	: Max / Min offsets will be calculated automatically. Drug may also be infered from drugName
+    _samp		: {user:"#11:1", schedule:[ time:1100 ] }
+    offset		: The minutes from 3AM when this dose is expected
+    maxOffset	: The minutes from 3AM when this dose taking window begins
+    minOffset	: The minutes from 3AM when this dose taking window ends
+    window		: The number of minutes either side of the offset in which a dose may be considered 'ontime'
+    drug			: drug expected for this dose windows
+    startDate	: The datetime for when this schedule should begin
+    endDate		: The datetime at which this schedule should end
+    active		: true if this dose is currently scheduled
+    replace		: List of prior dose schedules  that were deactivated by this dose
+  insight:
+    _tags      : app
+    _desc		: Notifications pushed to users
+    message		: The message to be sent to the user
+  factoid:
+    _tags			: app
+    _desc		: Rules for determining factoids
+    locale		: Location
+  goal:
+    _tags		: app
+    _desc		: Individual goals for specific metrics
+    target		: The absolute value to use as a target.
+    actDays		: Number of days to aggreagte for determining the actual value
+    relDays 	: Number of days to aggregate for determining the target value
+    minDev		: Minium deviation from the target
+    maxDev		: Maximum Deviation from the target
+    flagged		: Daily Stats that don't match the target goal.
+    aggFunc		: Aggregation function to compare (sum, count, max, min, avg)
+  tag:
+    _tags		: app
+    _desc		: A set of records tagged with a term
+    refs			: List of record references
+    term			: A link to a term
+    text			: Text to label this tag with
+  term:
+    _tags		: app
+    _desc		: A tagging taxonomy term
+    name			: The name of this term
+    desc			: The description of this term
+    parent		: The parent of this term
+    rel			: The relationship to the parent term
+    subTerms	: List of child terms
+    relTypes   : List of allowed relations of sub terms
+    refTypes   : List of allowed classes that may be tagged with this term
+  view:
+    _tags		: app
+    _desc		: Materialised Views
+    name			: Name of this view
+    ttl			: Time to live in minutes
+    sql			: The Sql to run for this view
+    data			: Data from this query
+  resting:
+    _tags		: cep
+    _desc		: Time spent at Rest
+  sitting:
+    _tags		: cep
+    _desc		: Time spent Sitting
+  active:
+    _tags		: cep
+    _desc		: Time spect active
+  syncRequest:
+    _desc		: A sync request
+  syncResponse:
+    _desc		: A sync response
+  patch:
+    _tags		: cmd
+    _desc		: A patch record
+  syncLog:
+    _tags		: cmd
+    _desc		: A syncLog record
+    appInfo		: Info about the application that posted this record
+    recInfo		: Info about the data upload request
+  metric:
+    _tags		: sys
+    _desc		: A metric record
+    unit			: The unit
+    dayOffset	: Hourly offset from midnight used to calculate daily stats
+    source		: The source of this metric
+  raw:
+    _tags		: cmd
+    _desc		: A cmd raw data record
+    data			: Raw data payload
+    patchId		: Patch ID
+    acqTime		: Acquistion time
+  user :
+    _tags		: sys
+    _desc		: A user account
+    name			: the login name
+    status		: Activation status
+    contact		: A link to the primary contact record for this user
+    config		: A link to the primary config record for this user
+    roles		: The roles assigned to this user
+    groups		: The groups which this user is a member of
+    shares		: The groups which this user has access to.
+  group:
+    _tags		: sys
+    _desc		: a group of users
+    _post		: Group will be automatically added to specified parent
+    role			: The role that governs what what member of this group are sharing
+    name			: The name of the group
+    parent		: The parent group
+    owner		: The user that owns this group
+    memberUsers: List of users who are members of this group
+    memberGroups	: The groups that are members of this group
+    title		: The display title for the group
+    config		: Group configuration details
+  sync:
+    _tags		: sys
+    _desc		: A protected class that can be shared
+    user			: The user that owns this record
+  event:
+    _tags		: sys
+    _desc		: A timestamped event
+    metric		: The metric meta data describing this event
+    time			: The time the event occured
+    tzone		: The timezone of the user when this event oaccured
+    label		: A description of this event
+    value		: The numeric value of the event
+  cmd:
+    _tags		: cmd
+    _desc		: A CMD event uploaded by the proteus wearable app.
+    patchId		: The patch Id coresponding to this event
+    syncLog		: The syncLog record for the request that created this event
+  ingestion :
+    _tags		: cmd
+    _desc		: An IEM ingestion event
+    code			: The IEM Code
+    value		: The proportion of expected ingestions for this day
+    drug			: The drug dose form that was ingested
+  stepCount:
+    _tags		: cmd
+    _desc		: Step Count Event
+    value		: The number of steps recorded for this minute
+  heartRate	:
+    _tags		:  cmd
+    _desc		: Heart Rate event
+    value		: Beats per minute
+  patchStatus:
+    _tags		: cmd
+    _desc		: Patch Status Event (deprecated)
+    value		: Patch battery %
+    contact		: Skin Contact level 0 = bad, 1 = good, 2 = unknown
+  patchContact	:
+    _tags		: cmd
+    _desc		: Patch Contact Event
+    value      : Patch Contact impedence
+  patchBattery:
+    _tags		: cmd
+    _desc		: Patch Battery Event
+    value      : Patch Battery %
+  bodyAngle :
+    _tags		: cmd
+    _desc		: Body Angle Event
+    value   	: Angle from normal in degrees.
+  skinTemp:
+    _tags		: cmd
+    _desc		: Skin Temperature Event
+    value		: Skin temperature in milli celsius
+  config:
+   _tags			: app
+   _desc			: Application configuration data for a user
+   patches		: The patch records that have been paired for this user
+   lastSync		: The most recent syncLog record for this user
+   lastCmdSync	: The most recent syncLog record with CMD Data
+   tags			: List of tags associate with this user
+  contact:
+   _tags			: app
+   _desc			: Contact details for a user
+   _tags			: user
+   _put       	: Contact records are encrypted
+   _post      	: Contact records are encrypted
+   firstName	: The users first name
+   lastName		: The users last name
+   email			: The users email address
+   telNo			: The users telephone number
+  site:
+   _tags			: app
+   _post			: Create a new site
+   _put			: Update site
+   _desc			: A group which represents a clinical entity
+   title			: The name of the site
+   codes			: A map of startCodes to product.
+  product:
+   _desc			: a container for product configuration meta data for patients in multiple site
+   useCase		: The commercial use case
+   activation	: The activation method used for users with tis
+   drugs			: A List of drugs applicable for this product
+  drug:
+   _desc			: A digital drug
+   name			: the name of the drug
+   mg				: Number of milligrams in this drug
+   doseForm		: A description of the drug dose form (eg pill, capsule)
+   imprint		: Markings on the drug
+   manufacturer: The drug manufacturer
+   rxCui			: rxCui if known
+   labelImg		: url for the image of the drug label.
+   window		: default window size for the drug
+   offset		: default offset for the drug
+  dailyStats		:
+   _desc			: daily stats summaries
+   metric		: The metric
+   user			: The user
+   avg			: Average event value
+   sum			: The Sum of the event values for this day
+   std			: Standard deviation of event values for this day
+   min			: The minium event value for this day
+   max			: The maximum event value for this day
+   hours			: List of hourly stats record for this day
+   count			: The number of event records for this day
