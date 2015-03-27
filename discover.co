@@ -1,0 +1,99 @@
+YAML = require 'js-yaml'
+_ = require 'lodash'
+fs = require 'fs'
+#fetch = require 'node-fetch'
+Promise = require "bluebird"
+https = require 'https'
+
+host = 'YOUR HOST HERE'
+
+doc = YAML.safeLoad fs.readFileSync './apiDoc.yaml', 'utf8'
+
+loopMod  = (dbMod, lbMod={}) ->
+	log 'GOT MOD:'+dbMod.name
+	if doc.models[dbMod.superClass] then _(myDoc).defaults doc.models[dbMod.superclass]
+	myDoc = doc.models[dbMod.name]
+	lbMod = name:dbMod.name, base:dbMod.superClass, idInjection:false, strict:false, relations:{}, scopes:{}
+	lbMod.description = myDoc._desc
+	lbMod.properties = '@rid' : type: 'string', format:'#\\d+:\\d+', description:dbMod.name+' Record Id', id:true
+	for prop in dbMod.properties then lbMod.properties[prop.name] = loopProp prop if myDoc[prop.name]
+	lbMod
+
+log = (ob, key='') -> console.log key ,':', ob
+
+linkRef = (name) ->
+	anyOf: [{type:"string", description: name+' Record Id', format:"#\\d+:\\d+"}, { $ref: name } ]
+
+loopProp = (dbProp, lbProp={})  ->
+	log 'got prop:'+dbProp.name
+	if dbProp.name[0] == '_' then return
+	dbType = dbProp.type.toLowerCase()
+	dbLink = dbProp.linkedClass
+	if dbLink
+		if dbLink == 'OUser' then dbLink = 'user'
+		if !doc.models[dbLink] then return
+	switch dbType
+		when 'linklist' then lbProp = type:'array', items: linkRef dbLink
+		when 'linkset' then lbProp =  type:'array', items: linkRef dbLink
+		when 'linkmap' then lbProp =  type:'object'
+		when 'link' then lbProp = linkRef dbLink
+		when 'embeddedlist' then lbProp = type : 'array', items: type:'string'
+		when 'embeddedset' then lbProp = type : 'array', items: type:'string'
+		when 'embeddedmap'  then lbProp.type = 'object'
+		when 'datetime'  	  then lbProp = type:'string', format:'datetime'
+		when 'long' then lbProp.type = 'integer'
+		when 'float' then lbProp.type = 'number'
+		when 'double' then lbProp.type = 'number'
+		else lbProp.type = dbType
+	lbProp
+
+###
+funResp = (doc) ->
+	if !doc then return
+	if typeof doc == 'string' then return type:'string', description:doc
+	if doc.length then return type:'array', items: funResp doc[0]
+	for name, prop of doc then if prop then doc[name] = funResp prop else doc[name] = $ref: name
+	doc
+
+funSpec = (func, spec, params=[]) ->
+	doc = desc.funcs[func.name]
+	console.log 'FUNCT:', func
+	try
+		matches = func.code.match /\*\*\s([^/]*)\s\*\* /
+		if matches?[1] then doc <<< YAML.load matches[1]
+	catch
+		console.log 'YAML:', e
+	if !doc?._desc then return spec
+	funApi = description:doc._desc,responses:200:description:doc._desc,schema:type:'object',properties:funResp doc._out
+	if doc._tags then funApi.tags = funApi.tags = doc._tags.split! else funApi.tags = ['Misc Functions']
+	path = "/!"+func.name
+	if func.parameters then for param in func.parameters
+		path += "/{#param}"
+		params.push in:'path', name:param, type:'string', description:doc[param]
+	if doc._inp then params.push in:'body', name:'body', schema: funResp doc._inp
+	if params.length then funApi.parameters = params
+	if func.idempotent then spec.paths[path]=get:funApi else spec.paths[path]=post:funApi
+	spec
+###
+
+proGet = (path, call, body='') -> new Promise (resolve, reject) ->
+	console.log 'fetching '+env+' '+path
+	https.get 'https://'+host+'/'+ path+'?access='+access, (res) ->
+		res.on 'error',(e) -> console.log path+' error ', e.message; reject e
+		res.on 'data', (chunk) -> body += chunk
+		res.on 'end',  (oBody = JSON.parse body) ->
+			if oBody.result
+				if oBody.result.length == 1 then resolve oBody.result[0]
+				else resolve oBody.result
+			else resolve oBody
+
+mods = []
+funs = []
+
+writeMod = (model) ->
+	fs.writeFileSync "./models/"+model.name+".json", JSON.stringify model
+
+for id, mod of doc.models then mods.push proGet '@'+id
+for id, fun of doc.funcs  then funs.push proGet 'OFunction/name='+id
+Promise.all(mods).then (mods) -> for mod in mods then writeMod loopMod mod, doc
+#Promise.all(funs).then (funs) -> for fun in funs then writeMod loopFun fun, doc
