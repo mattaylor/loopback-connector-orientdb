@@ -1,6 +1,6 @@
 {
   "name": "loopback-connector-orientdb",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Orientdb connector for loopback",
   "main": "index.js",
   "directories": {
@@ -13,7 +13,6 @@
     "debug": "^2.0.0",
     "lodash": "^3.1.0",
     "orientjs": "latest",
-    "oriento": "^1.1.0"
   },
   "devDependencies": {},
   "scripts": {
