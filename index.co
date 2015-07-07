@@ -1,19 +1,19 @@
 Promise = require 'bluebird'
 http    = require 'http'
-Oriento = require 'oriento'
+OrientDb = require 'orientjs'
 _ = require 'lodash'
 
 module.exports =
-	initialize :  (source, call) ->  
-		if source.settings.useBinary then dbCon = new OBin source.settings   
-		else dbCon = new OWeb source.settings
+	initialize :  (source, call) ->
+		if source.settings.useBinary then dbCon = new OBinAPI source.settings
+		else dbCon = new OWebAPI source.settings
 		source.connector = dbCon
 		source.connector.dataSource = source
 		call && call()
-	oweb 	: (opts) -> new OWeb opts
-	obin 	: (opts) -> new OBin opts
+	oweb 	: (opts) -> new OWebAPI opts
+	obin 	: (opts) -> new OBinAPI opts
 
-class OWeb
+class OWebAPI
 
 	opts 	: logLevel:2, port:2480, method:'get', name:'test', host:'localhost', headers:
 		'content-type':'application/json', Accept: 'application/json'
@@ -25,12 +25,14 @@ class OWeb
 		_.merge @opts, opts
 
 	auth : (creds) ->
-		if creds.type == 'basic' then return @opts.auth = creds.username+':'+creds.password
-		@fetch
+		if creds.type == 'basic'
+			@opts.auth = creds.username+':'+creds.password
+			return @me()
+		else @fetch
 			path:'/token/'+@opts.name
 			body : 'grant_type=password&username='+creds.username+'&password='+creds.password
 			headers:'Content-Type':'application/x-www-form-urlencoded'
-		.then (res) => 
+		.then (res) =>
 			@debug 'AUTH:'+creds.username, res
 			@opts.headers.Authorization = 'Bearer '+res.access_token
 			res.access_token
@@ -38,10 +40,10 @@ class OWeb
 
 	fetch : (opts, call) ->
 		opts = _.merge {}, @opts, opts
-		if opts.body 
+		if opts.body
 			opts.headers['Content-Length'] = opts.body.length
-			opts.method == 'get' && opts.method = 'post' 
-		@debug 'FETCH:',opts, 2  
+			opts.method == 'get' && opts.method = 'post'
+		@debug 'FETCH:',opts, 2
 		prom = new Promise (resolve, reject) =>
 			req = http.request opts, (res, body='') =>
 				@cook res.headers['set-cookie']
@@ -53,27 +55,27 @@ class OWeb
 		call && prom.catch(call).then (res) -> call(null,res)
 		prom
 
-	cook: (cookie) -> 
+	cook: (cookie) ->
 		cookie && @opts.auth = null
 		cookie && @opts.headers.Cookie = cookie
 
-	me : (call) -> 
+	me : (call) ->
 		@invoke 'me', [], call
 
 	select : (model, filter={}, sql="select ") ->
 		#sql = 'select '+filter.fields?.join() +' from '+model
 		filter.fields && sql += filter.fields.join()
 		model && sql += ' from '+model
-		filter.where && sql += ' where '+filter.where 
+		filter.where && sql += ' where '+filter.where
 		filter.sort  && sql += ' sort by '+filter.sort
 		filter.group && sql += ' group by '+filter.group
 		filter.limit && sql += ' limit '+filter.limit
-		filter.skip  && sql += ' skip '+filter.skip 
+		filter.skip  && sql += ' skip '+filter.skip
 		filter.plan  && sql += ' fetchPlan '+filter.plan
 		sql
 
 	all : (model, filter={}, call) ->
-		@debug 'All : '+model, filter 
+		@debug 'All : '+model, filter
 		@query @select(model, filter), call
 
 	find : (model, id, call, opts) ->
@@ -100,15 +102,15 @@ class OWeb
 		@debug 'count: '+model, where
 		@all model, {fields:['count(*)'], where:where}, call, opts
 
-	debug : (key, val='', level=1) -> 
+	debug : (key, val='', level=1) ->
 		if level <= @opts.logLevel then console.log @type, key, val
 
 	describe : (model) ->
 		@fetch path:'/class/'+@opts.name+'/'+model
 		.then (mod, props={}) ->
-			for p in mod.properties then if p.name.match /^[a-z]/ 
-				p.type = typeMap[p.type] 
-				props[p.name] = p  
+			for p in mod.properties then if p.name.match /^[a-z]/
+				p.type = typeMap[p.type]
+				props[p.name] = p
 			mod.properties = props
 			mod.properties.id = type:'String', format:'#\\d+:\\d+', description:mod.name+' Record Id'
 			mod
@@ -142,34 +144,34 @@ class OWeb
 	disconnect : () ->
 
 
-class OBin extends OWeb
+class OBinAPI extends OWebAPI
 
-	opts 	: username:'admin', password:'admin', useToken:true 
+	opts 	: username:'admin', password:'admin', useToken:true
 	type 	: 'OBIN'
 
 	constructor : (opts) ->
-		@server = Oriento _.merge @opts, opts
-		@connect @opts 
+		@server = OrientDB _.merge @opts, opts
+		@connect @opts
 
-	connect : (creds) -> 
+	connect : (creds) ->
 		creds.name ?= @opts.name
-		if (@db && creds.token) then @db.token = creds.token 
-		else @db = @server.use(creds) 
+		if (@db && creds.token) then @db.token = creds.token
+		else @db = @server.use(creds)
 
-	invoke : (func, args = []) -> 
+	invoke : (func, args = []) ->
 		@debug 'INVOKE:'+func, args
 		@db.exec "select expand('+func+') from (select "+func+'('+args.join()+'))'
-	
-	query : (sql, call, opts) -> 
-		@debug 'QUERY:'+sql, opts 
-		prom = @db.query(sql, opts)
+
+	query : (sql, call, opts) ->
+		@debug 'QUERY:'+sql, opts
+		prom = @db.query(sql, opts) .then (res) -> res.toJSON()
 		call && prom.catch(call).then (res) -> call(null,res)
 		prom
 
 operMap =
 	neq:' <> ', like:' like ', nlike:' not like ', ni: 'not in', lte:' <= ', gte:' >= ', lt:' < ', gt:' > '
 
-typeMap = 
+typeMap =
 	LINKLIST:'[String]'
 	LINKSET:'[String]'
 	LINKMAP:'Object'
@@ -188,4 +190,4 @@ typeMap =
 	EMBEDDEDSET:'Array'
 	EMBEDDEDMAP:'Object'
 
-mix = (src, def) -> _.merge {}, def, src 
+mix = (src, def) -> _.merge {}, def, src
